@@ -19,10 +19,11 @@ const TIER_MAPPING = {
   [process.env.PRICE_ID_PREMIUM]: 'premium'
 };
 
-// Middleware for JSON (except webhook route)
+// IMPORTANT: Apply express.json() to all routes EXCEPT webhook
+// Webhook needs raw body for signature verification
 app.use((req, res, next) => {
-  if (req.originalUrl === '/webhook/stripe') {
-    next();
+  if (req.path === '/webhook/stripe') {
+    next(); // Skip JSON parsing for webhook
   } else {
     express.json()(req, res, next);
   }
