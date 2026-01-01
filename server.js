@@ -170,11 +170,25 @@ async function handleSubscriptionUpdate(subscription) {
     const customer = await stripe.customers.retrieve(subscription.customer);
     console.log('👤 Customer:', customer.email);
     
+    // Skip if no email (test data)
+    if (!customer.email) {
+      console.warn('⚠️  No customer email found, skipping database update (test data)');
+      return;
+    }
+    
     const priceId = subscription.items.data[0].price.id;
     console.log('💰 Price ID:', priceId);
     
     const tier = TIER_MAPPING[priceId] || 'unknown';
     console.log('🎯 Mapped tier:', tier);
+    
+    // Skip if tier is unknown
+    if (tier === 'unknown') {
+      console.warn('⚠️  Unknown price ID, cannot map to tier. Skipping database update.');
+      console.warn('⚠️  Price ID received:', priceId);
+      console.warn('⚠️  Expected Price IDs:', TIER_MAPPING);
+      return;
+    }
 
     // Handle current_period_end safely
     let periodEnd = null;
@@ -191,7 +205,7 @@ async function handleSubscriptionUpdate(subscription) {
     }
 
     const subscriptionData = {
-      user_id: customer.email, // Using email as user_id
+      user_id: customer.email,
       email: customer.email,
       stripe_customer_id: subscription.customer,
       subscription_tier: tier,
