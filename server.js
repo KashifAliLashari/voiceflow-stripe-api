@@ -44,8 +44,11 @@ app.get('/', (req, res) => {
 app.post('/api/check-subscription', async (req, res) => {
   try {
     const { userId, email } = req.body;
+    
+    console.log('📨 Received request:', { userId, email });
 
     if (!userId && !email) {
+      console.log('❌ Missing userId or email');
       return res.status(400).json({
         error: 'Missing parameter',
         message: 'Please provide either userId or email'
@@ -58,12 +61,16 @@ app.post('/api/check-subscription', async (req, res) => {
       .select('*');
 
     if (userId) {
+      console.log('🔍 Searching by userId:', userId);
       query = query.eq('user_id', userId);
     } else {
+      console.log('🔍 Searching by email:', email);
       query = query.eq('email', email);
     }
 
     const { data, error } = await query.single();
+    
+    console.log('📊 Supabase query result:', { data, error });
 
     if (error || !data) {
       // User not found or no subscription
@@ -158,9 +165,30 @@ app.post('/webhook/stripe',
 
 async function handleSubscriptionUpdate(subscription) {
   try {
+    console.log('📝 Processing subscription update:', subscription.id);
+    
     const customer = await stripe.customers.retrieve(subscription.customer);
+    console.log('👤 Customer:', customer.email);
+    
     const priceId = subscription.items.data[0].price.id;
+    console.log('💰 Price ID:', priceId);
+    
     const tier = TIER_MAPPING[priceId] || 'unknown';
+    console.log('🎯 Mapped tier:', tier);
+
+    // Handle current_period_end safely
+    let periodEnd = null;
+    if (subscription.current_period_end) {
+      try {
+        periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+      } catch (dateError) {
+        console.warn('⚠️  Invalid date for current_period_end, using 30 days from now');
+        periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      }
+    } else {
+      // Default to 30 days from now if no end date
+      periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    }
 
     const subscriptionData = {
       user_id: customer.email, // Using email as user_id
@@ -169,9 +197,11 @@ async function handleSubscriptionUpdate(subscription) {
       subscription_tier: tier,
       status: subscription.status,
       stripe_subscription_id: subscription.id,
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      current_period_end: periodEnd,
       updated_at: new Date().toISOString()
     };
+    
+    console.log('💾 Saving to Supabase:', subscriptionData);
 
     // Upsert to Supabase (insert or update)
     const { error } = await supabase
@@ -181,12 +211,12 @@ async function handleSubscriptionUpdate(subscription) {
       });
 
     if (error) {
-      console.error('Supabase error:', error);
+      console.error('❌ Supabase error:', error);
     } else {
       console.log('✅ Subscription updated in database:', customer.email, tier);
     }
   } catch (error) {
-    console.error('Error handling subscription update:', error);
+    console.error('❌ Error handling subscription update:', error);
   }
 }
 
